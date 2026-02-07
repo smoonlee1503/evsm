@@ -1,0 +1,918 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  Factory, 
+  Truck, 
+  Package, 
+  Settings, 
+  ArrowRight, 
+  Trash2, 
+  MousePointer2, 
+  RotateCcw,
+  ZoomIn,
+  ZoomOut,
+  X,
+  Grid,
+  Hand,
+  PenLine,
+  Save,
+  Folder,
+  FilePlus,
+  Loader2,
+  Zap,
+  Ship,
+  BoxSelect,
+  Activity,
+  Calculator
+} from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  signInWithCustomToken,
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  addDoc,
+  setDoc,
+  deleteDoc, 
+  onSnapshot, 
+  serverTimestamp 
+} from 'firebase/firestore';
+
+// --- Firebase Setup ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// --- Components ---
+
+const Node = ({ node, isSelected, onMouseDown }) => {
+  const getStyles = () => {
+    const base = "absolute cursor-move flex flex-col items-center select-none group";
+    const selected = isSelected ? "ring-2 ring-blue-500 rounded" : ""; 
+    return `${base} ${selected}`;
+  };
+
+  const CommonLabel = () => (
+    <span className="font-bold text-[10px] text-center mt-1 bg-white/80 px-1 rounded pointer-events-none whitespace-nowrap">
+      {node.label}
+    </span>
+  );
+
+  // --- MATERIAL FLOW ICONS ---
+
+  // 1. Manufacturing Process (Standard)
+  if (node.type === 'process') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+        <div className="bg-white border-2 border-slate-800 w-32 h-20 flex flex-col z-10 shadow-sm relative pointer-events-none">
+            <div className="h-6 border-b-2 border-slate-800 bg-slate-50 flex items-center justify-center">
+                <span className="font-bold text-xs text-slate-800 truncate px-1">{node.label}</span>
+            </div>
+            <div className="flex-1"></div>
+        </div>
+        {/* Data Box */}
+        <div className="w-24 bg-white border-l-2 border-r-2 border-b-2 border-slate-800 text-[10px] mt-[-2px] z-20 pointer-events-none">
+            <div className="flex justify-between px-1 py-0.5 border-b border-slate-300"><span>C/T</span><span>{node.data.ct}s</span></div>
+            <div className="flex justify-between px-1 py-0.5 border-b border-slate-300"><span>C/O</span><span>{node.data.co}m</span></div>
+            <div className="flex justify-between px-1 py-0.5"><span>Up</span><span>{node.data.uptime}%</span></div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Manufacturing Process (Shared)
+  if (node.type === 'process_shared') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+        <div className="bg-white border-2 border-slate-800 w-32 h-20 flex items-center justify-center relative pointer-events-none">
+             {/* Inner Box */}
+             <div className="border-2 border-slate-800 w-24 h-12 flex items-center justify-center bg-slate-50">
+                <span className="font-bold text-xs text-center leading-tight">{node.label}</span>
+             </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Supplier/Customer (Outside Sources)
+  if (node.type === 'supplier') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+        <div className="bg-white border-2 border-slate-800 p-2 relative w-24 h-16 flex items-center justify-center shadow-sm z-10 pointer-events-none">
+          <div className="absolute -top-3 left-0 w-full h-4 border-t-2 border-l-2 border-r-2 border-slate-800 bg-white"></div>
+          <div className="absolute -top-3 left-1/4 w-1/2 h-4 bg-transparent border-b-0"></div> 
+          <span className="font-bold text-xs text-center z-10">{node.label}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. Inventory Triangle
+  if (node.type === 'inventory') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+        <div className="relative w-0 h-0 border-l-[20px] border-r-[20px] border-b-[35px] border-l-transparent border-r-transparent border-b-white filter drop-shadow-[0_2px_0px_rgba(30,41,59,1)] z-10 flex items-center justify-center pointer-events-none">
+             <span className="absolute top-[18px] text-[8px] font-bold text-slate-800">I</span>
+        </div>
+        <div className="mt-1 bg-white px-1 border border-slate-400 text-[9px] rounded shadow-sm pointer-events-none flex flex-col items-center min-w-[30px]">
+            <span>{node.data.amount} qty</span>
+            {node.data.leadTime > 0 && <span className="text-[8px] text-blue-600 font-semibold border-t border-slate-200 w-full text-center mt-0.5 pt-0.5">{node.data.leadTime}d</span>}
+        </div>
+      </div>
+    );
+  }
+
+  // 5. Supermarket
+  if (node.type === 'supermarket') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+         <div className="w-16 h-12 relative pointer-events-none">
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-800"></div>
+            <div className="absolute left-0 top-0 w-16 h-1 bg-slate-800"></div>
+            <div className="absolute left-0 top-6 w-16 h-1 bg-slate-800"></div>
+            <div className="absolute left-0 bottom-0 w-16 h-1 bg-slate-800"></div>
+         </div>
+         <CommonLabel />
+      </div>
+    );
+  }
+
+  // 6. Safety Stock / Buffer
+  if (node.type === 'safety_stock') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+         <div className="w-12 h-16 border-2 border-slate-800 bg-white flex flex-col pointer-events-none">
+             <div className="flex-1 border-b border-slate-800"></div>
+             <div className="flex-1 border-b border-slate-800"></div>
+             <div className="flex-1"></div>
+         </div>
+         <CommonLabel />
+      </div>
+    );
+  }
+
+  // --- TRANSPORT ICONS ---
+
+  // 7. Truck Shipment
+  if (node.type === 'truck') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+         <div className="bg-white border-2 border-slate-800 p-1 rounded shadow-md z-10 pointer-events-none">
+            <Truck className="w-8 h-8 text-slate-800" strokeWidth={1.5} />
+         </div>
+         <CommonLabel />
+      </div>
+    );
+  }
+
+  // 8. Boat Shipment
+  if (node.type === 'boat') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+         <div className="bg-white border-2 border-slate-800 p-1 rounded shadow-md z-10 pointer-events-none">
+            <Ship className="w-8 h-8 text-slate-800" strokeWidth={1.5} />
+         </div>
+         <CommonLabel />
+      </div>
+    );
+  }
+
+  // 9. Forklift (Move)
+  if (node.type === 'forklift') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+        {/* Simple SVG Forklift representation */}
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-800 pointer-events-none bg-white/50 rounded">
+            <path d="M2 12h5l2-7h6l2 7h2" />
+            <circle cx="6" cy="18" r="2" />
+            <circle cx="18" cy="18" r="2" />
+            <path d="M2 20h20" strokeWidth="1" strokeDasharray="2 2"/>
+        </svg>
+         <span className="text-[10px] font-bold">Forklift</span>
+      </div>
+    );
+  }
+
+  // 10. Push Arrow (Striped/Thick)
+  if (node.type === 'push_arrow') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+        <svg width="80" height="40" viewBox="0 0 100 50" className="pointer-events-none drop-shadow-sm">
+            <path d="M0,15 L60,15 L60,0 L100,25 L60,50 L60,35 L0,35 Z" fill="white" stroke="#1e293b" strokeWidth="2" />
+            {/* Stripes */}
+            <path d="M10,15 L10,35 M20,15 L20,35 M30,15 L30,35 M40,15 L40,35 M50,15 L50,35" stroke="#1e293b" strokeWidth="1" />
+        </svg>
+        <span className="text-[10px] font-bold mt-[-15px] z-20">PUSH</span>
+      </div>
+    );
+  }
+
+  // 11. FIFO Lane
+  if (node.type === 'fifo') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+         <div className="w-24 h-8 flex flex-col items-center justify-center relative pointer-events-none">
+            <div className="w-full border-b-2 border-slate-800 mb-1"></div>
+            <span className="text-[10px] font-bold bg-white px-1 z-10">FIFO</span>
+            <div className="w-full border-t-2 border-slate-800 mt-1"></div>
+            <ArrowRight className="absolute right-[-10px] w-4 h-4 text-slate-800" />
+         </div>
+      </div>
+    );
+  }
+
+  // 12. Physical Pull
+  if (node.type === 'physical_pull') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+         <svg width="40" height="40" viewBox="0 0 24 24" className="pointer-events-none">
+             <path d="M12 21a9 9 0 1 0-9-9 9 9 0 0 0 9-9" fill="none" stroke="#1e293b" strokeWidth="2" strokeDasharray="4 2" />
+             <path d="M12 21l-4-4m4 4l4-4" stroke="#1e293b" strokeWidth="2" fill="none" />
+         </svg>
+         <span className="text-[9px] font-bold">Pull</span>
+      </div>
+    );
+  }
+
+  // --- INFO & GENERAL ICONS ---
+
+  // 13. Schedule Box (Weekly)
+  if (node.type === 'schedule') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+        <div className="bg-white border-2 border-slate-800 w-24 h-12 flex items-center justify-center pointer-events-none">
+            <span className="text-[10px] font-bold text-center leading-tight">Weekly<br/>Schedule</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 14. Load Leveling (Heijunka)
+  if (node.type === 'load_leveling') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+        <div className="bg-white border-2 border-slate-800 w-28 h-10 flex pointer-events-none">
+             <div className="flex-1 border-r border-slate-800 flex items-center justify-center text-xs font-bold">O</div>
+             <div className="flex-1 border-r border-slate-800 flex items-center justify-center text-xs font-bold">X</div>
+             <div className="flex-1 border-r border-slate-800 flex items-center justify-center text-xs font-bold">O</div>
+             <div className="flex-1 flex items-center justify-center text-xs font-bold">X</div>
+        </div>
+        <CommonLabel />
+      </div>
+    );
+  }
+
+  // 15. Kaizen Burst
+  if (node.type === 'kaizen') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+         <svg width="60" height="50" viewBox="0 0 100 80" className="pointer-events-none">
+            <polygon points="50,0 63,25 90,10 75,35 100,50 75,65 90,90 63,75 50,100 37,75 10,90 25,65 0,50 25,35 10,10 37,25" fill="white" stroke="#1e293b" strokeWidth="3" />
+         </svg>
+         <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[9px] font-bold text-center">KAIZEN</span>
+      </div>
+    );
+  }
+
+  // 16. Operator
+  if (node.type === 'operator') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+         <div className="w-8 h-8 border-2 border-slate-800 rounded-full flex items-center justify-center bg-white pointer-events-none">
+             <div className="w-5 h-2 border-b-2 border-slate-800 rounded-[50%]"></div>
+         </div>
+         <div className="w-10 h-4 border-t-2 border-l-2 border-r-2 border-slate-800 rounded-t-full mt-[-4px] pointer-events-none"></div>
+      </div>
+    );
+  }
+
+  // 17. Signal Kanban
+  if (node.type === 'kanban_signal') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+         <svg width="30" height="30" viewBox="0 0 30 30" className="pointer-events-none">
+             <polygon points="0,0 30,0 15,30" fill="white" stroke="#1e293b" strokeWidth="2" />
+         </svg>
+         <CommonLabel />
+      </div>
+    );
+  }
+
+  // 18. Kanban Post
+  if (node.type === 'kanban_post') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+         <div className="w-8 h-12 border-l-2 border-r-2 border-b-2 border-slate-800 relative pointer-events-none">
+             <div className="absolute top-4 w-full border-b-2 border-slate-800"></div>
+         </div>
+         <CommonLabel />
+      </div>
+    );
+  }
+
+  // 19. Go See (Glasses)
+  if (node.type === 'go_see') {
+    return (
+      <div className={getStyles()} style={{ left: node.x, top: node.y }} onMouseDown={(e) => onMouseDown(e, node.id)}>
+         <div className="flex gap-1 pointer-events-none">
+             <div className="w-4 h-4 rounded-full border-2 border-slate-800"></div>
+             <div className="w-4 h-4 rounded-full border-2 border-slate-800"></div>
+         </div>
+         <span className="text-[9px] font-bold">Go See</span>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+// --- Main App ---
+
+export default function App() {
+  // Auth & Data State
+  const [user, setUser] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [currentProjectId, setCurrentProjectId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showProjectList, setShowProjectList] = useState(false);
+
+  // App State
+  const [nodes, setNodes] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [projectTitle, setProjectTitle] = useState("My Value Stream Map");
+  
+  const [selectedId, setSelectedId] = useState(null);
+  const [selectedConnId, setSelectedConnId] = useState(null);
+  const [mode, setMode] = useState('select'); // 'select' | 'connect'
+  const [connectType, setConnectType] = useState('manual'); // 'manual' (straight) | 'electronic' (zigzag)
+  
+  // View State
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  
+  // Interaction State
+  const [draggingId, setDraggingId] = useState(null);
+  const [connectSourceId, setConnectSourceId] = useState(null);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  
+  // Metrics State
+  const [metrics, setMetrics] = useState({ leadTime: 0, processingTime: 0 });
+
+  // Refs
+  const dragStart = useRef({ mouseX: 0, mouseY: 0, nodeX: 0, nodeY: 0 });
+  const panStart = useRef({ x: 0, y: 0 });
+  const canvasRef = useRef(null);
+  const GRID_SIZE = 20;
+
+  // --- Calculations ---
+  useEffect(() => {
+    // Calculate totals whenever nodes change
+    const newMetrics = nodes.reduce((acc, node) => {
+        // Calculate Processing Time (Sum of all Cycle Times in Process nodes)
+        if (node.type === 'process' && node.data.ct) {
+            acc.processingTime += Number(node.data.ct) || 0;
+        }
+        // Calculate Production Lead Time (Sum of all Lead Times in Inventory nodes)
+        if (node.type === 'inventory' && node.data.leadTime) {
+            acc.leadTime += Number(node.data.leadTime) || 0;
+        }
+        return acc;
+    }, { processingTime: 0, leadTime: 0 });
+    
+    setMetrics(newMetrics);
+  }, [nodes]);
+
+  // --- Firebase Auth & Sync ---
+  useEffect(() => {
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = collection(db, 'artifacts', appId, 'users', user.uid, 'projects');
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const projList = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })).sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
+        setProjects(projList);
+    }, (error) => console.error("Error:", error));
+    return () => unsubscribe();
+  }, [user]);
+
+  // --- Project Functions ---
+  const handleSaveProject = async () => {
+    if (!user) return;
+    setIsSaving(true);
+    try {
+        const projectData = { title: projectTitle, nodes, connections, updatedAt: serverTimestamp() };
+        if (currentProjectId) {
+            await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'projects', currentProjectId), projectData, { merge: true });
+        } else {
+            const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'projects'), projectData);
+            setCurrentProjectId(docRef.id);
+        }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
+  };
+
+  const handleLoadProject = (project) => {
+      setNodes(project.nodes || []);
+      setConnections(project.connections || []);
+      setProjectTitle(project.title || "Untitled Project");
+      setCurrentProjectId(project.id);
+      setPan({ x: 0, y: 0 });
+      setZoom(1);
+      setShowProjectList(false);
+  };
+
+  const handleNewProject = () => {
+      setNodes([]);
+      setConnections([]);
+      setProjectTitle("New Value Stream Map");
+      setCurrentProjectId(null);
+      setPan({ x: 0, y: 0 });
+      setZoom(1);
+      setShowProjectList(false);
+  };
+
+  const handleDeleteProject = async (e, projectId) => {
+      e.stopPropagation();
+      if (!user) return;
+      if (confirm('Delete project?')) {
+          await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'projects', projectId));
+          if (currentProjectId === projectId) handleNewProject();
+      }
+  };
+
+  // --- Keyboard & Interaction ---
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (isEditingTitle) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedId || selectedConnId) deleteSelected();
+      }
+      if (e.code === 'Space' && !e.repeat && document.activeElement.tagName !== 'INPUT') {
+          e.preventDefault(); setIsSpacePressed(true);
+      }
+    };
+    const handleKeyUp = (e) => { if (e.code === 'Space') { setIsSpacePressed(false); setIsPanning(false); } };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
+  }, [selectedId, selectedConnId, isEditingTitle]);
+
+  const addNode = (type) => {
+    const id = Date.now().toString();
+    const defaults = {
+        process: { label: 'Process', data: { ct: 0, co: 0, uptime: 100 } },
+        process_shared: { label: 'Shared', data: {} },
+        supplier: { label: 'Supplier', data: {} },
+        inventory: { label: 'Inv', data: { amount: 100, leadTime: 0 } },
+        supermarket: { label: 'Market', data: {} },
+        safety_stock: { label: 'Buffer', data: {} },
+        truck: { label: 'Truck', data: {} },
+        boat: { label: 'Boat', data: {} },
+        forklift: { label: 'Move', data: {} },
+        push_arrow: { label: '', data: {} },
+        fifo: { label: '', data: {} },
+        physical_pull: { label: '', data: {} },
+        schedule: { label: '', data: {} },
+        load_leveling: { label: 'Load Level', data: {} },
+        kaizen: { label: '', data: {} },
+        operator: { label: '', data: {} },
+        kanban_signal: { label: 'Signal', data: {} },
+        kanban_post: { label: 'Post', data: {} },
+        go_see: { label: '', data: {} }
+    };
+    
+    // Add offset based on view center
+    const viewCenterX = -pan.x + (window.innerWidth / 2 / zoom);
+    const viewCenterY = -pan.y + (window.innerHeight / 2 / zoom);
+    
+    const newNode = {
+      id,
+      type,
+      x: viewCenterX - 50 + (Math.random() * 40),
+      y: viewCenterY - 50 + (Math.random() * 40),
+      ...defaults[type]
+    };
+
+    if (snapToGrid) {
+        newNode.x = Math.round(newNode.x / GRID_SIZE) * GRID_SIZE;
+        newNode.y = Math.round(newNode.y / GRID_SIZE) * GRID_SIZE;
+    }
+    setNodes(prev => [...prev, newNode]);
+    setSelectedId(id);
+    setSelectedConnId(null);
+    setMode('select');
+  };
+
+  const deleteSelected = () => {
+    if (selectedId) {
+        setNodes(nodes.filter(n => n.id !== selectedId));
+        setConnections(connections.filter(c => c.from !== selectedId && c.to !== selectedId));
+        setSelectedId(null);
+    }
+    if (selectedConnId) {
+        setConnections(connections.filter(c => c.id !== selectedConnId));
+        setSelectedConnId(null);
+    }
+  };
+
+  const updateNodeData = (field, value) => {
+    if (!selectedId) return;
+    setNodes(prev => prev.map(n => {
+        if (n.id !== selectedId) return n;
+        // Deep update
+        if (['ct', 'co', 'uptime', 'amount', 'leadTime'].includes(field)) {
+            return { ...n, data: { ...n.data, [field]: value }};
+        }
+        return { ...n, [field]: value };
+    }));
+  };
+
+  // --- Handlers ---
+  const handleMouseDown = (e, id) => {
+    if (isSpacePressed) return;
+    e.stopPropagation();
+
+    if (mode === 'connect') {
+      if (!connectSourceId) {
+        setConnectSourceId(id);
+      } else {
+        if (connectSourceId !== id) {
+          const exists = connections.find(c => c.from === connectSourceId && c.to === id);
+          if (!exists) {
+             setConnections([...connections, { 
+                 id: Date.now().toString(), 
+                 from: connectSourceId, 
+                 to: id,
+                 type: connectType // Store connection type
+             }]);
+          }
+        }
+        setConnectSourceId(null);
+        // Do NOT switch back to select automatically for rapid connecting
+      }
+      return;
+    }
+
+    setSelectedId(id);
+    setSelectedConnId(null);
+    setDraggingId(id);
+    const node = nodes.find(n => n.id === id);
+    dragStart.current = { mouseX: e.clientX, mouseY: e.clientY, nodeX: node.x, nodeY: node.y };
+  };
+
+  const handleCanvasMouseDown = (e) => {
+    if (isSpacePressed) {
+        setIsPanning(true);
+        dragStart.current = { mouseX: e.clientX, mouseY: e.clientY };
+        panStart.current = { x: pan.x, y: pan.y };
+        return;
+    }
+    if (e.target === e.currentTarget || e.target.tagName === 'svg') {
+        setSelectedId(null);
+        setSelectedConnId(null);
+        setConnectSourceId(null);
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (isPanning) {
+        setPan({
+            x: panStart.current.x + (e.clientX - dragStart.current.mouseX),
+            y: panStart.current.y + (e.clientY - dragStart.current.mouseY)
+        });
+        return;
+    }
+    if (draggingId && mode === 'select') {
+      const dx = (e.clientX - dragStart.current.mouseX) / zoom;
+      const dy = (e.clientY - dragStart.current.mouseY) / zoom;
+      let newX = dragStart.current.nodeX + dx;
+      let newY = dragStart.current.nodeY + dy;
+      if (snapToGrid) {
+          newX = Math.round(newX / GRID_SIZE) * GRID_SIZE;
+          newY = Math.round(newY / GRID_SIZE) * GRID_SIZE;
+      }
+      setNodes(prev => prev.map(n => n.id === draggingId ? { ...n, x: newX, y: newY } : n));
+    }
+  };
+
+  const getNodeCenter = (id) => {
+    const n = nodes.find(node => node.id === id);
+    if (!n) return { x: 0, y: 0 };
+    // Basic centers approximation
+    return { x: n.x + 40, y: n.y + 40 }; 
+  };
+
+  // Helper for Electronic (Zigzag) path
+  const getZigZagPath = (start, end) => {
+      const midX = (start.x + end.x) / 2;
+      const midY = (start.y + end.y) / 2;
+      return `M ${start.x} ${start.y} L ${midX} ${start.y} L ${midX} ${end.y} L ${end.x} ${end.y}`; 
+  };
+  
+  const getPolylinePoints = (start, end) => {
+      // Create a "Z" shaped electronic flow
+      const midX = (start.x + end.x) / 2;
+      const midY = (start.y + end.y) / 2;
+      return `${start.x},${start.y} ${midX},${start.y} ${midX},${end.y} ${end.x},${end.y}`;
+  };
+
+  const selectedNode = nodes.find(n => n.id === selectedId);
+
+  let cursorClass = "cursor-default";
+  if (isSpacePressed) cursorClass = isPanning ? "cursor-grabbing" : "cursor-grab";
+  else if (mode === 'connect') cursorClass = "cursor-crosshair";
+
+  return (
+    <div 
+      className={`flex h-screen w-full bg-slate-50 overflow-hidden font-sans text-slate-800 ${cursorClass}`}
+      onMouseMove={handleMouseMove}
+      onMouseUp={() => { setDraggingId(null); setIsPanning(false); }}
+      tabIndex={0}
+    >
+      {/* Sidebar / Toolbox */}
+      <div className="w-64 bg-white border-r border-slate-200 flex flex-col shadow-sm z-50">
+        <div className="p-4 border-b border-slate-100 flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-lg">V</div>
+            <span className="font-bold text-slate-700">VSM Tools</span>
+        </div>
+        
+        {/* Project Tools */}
+        <div className="flex gap-2 p-2 border-b border-slate-100 justify-around">
+             <ToolBtnSmall icon={Folder} onClick={() => setShowProjectList(true)} label="Projects" />
+             <ToolBtnSmall icon={isSaving ? Loader2 : Save} onClick={handleSaveProject} label="Save" active={isSaving} />
+             <ToolBtnSmall icon={Trash2} onClick={deleteSelected} label="Delete" color="text-red-500 hover:bg-red-50" />
+             <ToolBtnSmall icon={RotateCcw} onClick={() => { setPan({x:0, y:0}); setZoom(1); }} label="Reset View" />
+        </div>
+
+        {/* Scrollable Toolbox */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-4">
+            
+            {/* Mode Selection */}
+            <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <div className="text-[10px] font-bold text-slate-400 uppercase mb-2">Mode</div>
+                <div className="flex gap-1">
+                    <ToolBtnSmall icon={MousePointer2} label="Select" active={mode === 'select'} onClick={() => { setMode('select'); setConnectSourceId(null); }} />
+                    <ToolBtnSmall icon={ArrowRight} label="Manual" active={mode === 'connect' && connectType === 'manual'} onClick={() => { setMode('connect'); setConnectType('manual'); }} />
+                    <ToolBtnSmall icon={Zap} label="Electronic" active={mode === 'connect' && connectType === 'electronic'} onClick={() => { setMode('connect'); setConnectType('electronic'); }} />
+                </div>
+            </div>
+
+            <ToolSection title="Process Flow">
+                <ToolBtn icon={Settings} label="Process" onClick={() => addNode('process')} />
+                <ToolBtn icon={BoxSelect} label="Shared" onClick={() => addNode('process_shared')} />
+                <ToolBtn icon={Factory} label="Factory" onClick={() => addNode('supplier')} />
+            </ToolSection>
+
+            <ToolSection title="Material">
+                <ToolBtn icon={Package} label="Inventory" onClick={() => addNode('inventory')} />
+                <ToolBtn icon={Grid} label="Market" onClick={() => addNode('supermarket')} />
+                <ToolBtn icon={BoxSelect} label="Buffer" onClick={() => addNode('safety_stock')} />
+            </ToolSection>
+
+            <ToolSection title="Transport & Logistics">
+                <ToolBtn icon={Truck} label="Truck" onClick={() => addNode('truck')} />
+                <ToolBtn icon={Ship} label="Boat" onClick={() => addNode('boat')} />
+                <ToolBtn icon={ArrowRight} label="Push" onClick={() => addNode('push_arrow')} />
+                <ToolBtn icon={Activity} label="Forklift" onClick={() => addNode('forklift')} />
+                <ToolBtn icon={ArrowRight} label="FIFO" onClick={() => addNode('fifo')} />
+                <ToolBtn icon={RotateCcw} label="Pull" onClick={() => addNode('physical_pull')} />
+            </ToolSection>
+
+            <ToolSection title="Information & Kanban">
+                <ToolBtn icon={PenLine} label="Schedule" onClick={() => addNode('schedule')} />
+                <ToolBtn icon={Grid} label="Heijunka" onClick={() => addNode('load_leveling')} />
+                <ToolBtn icon={Zap} label="Kaizen" onClick={() => addNode('kaizen')} />
+                <ToolBtn icon={Hand} label="Signal" onClick={() => addNode('kanban_signal')} />
+                <ToolBtn icon={PenLine} label="Post" onClick={() => addNode('kanban_post')} />
+            </ToolSection>
+
+             <ToolSection title="General">
+                <ToolBtn icon={MousePointer2} label="Operator" onClick={() => addNode('operator')} />
+                <ToolBtn icon={MousePointer2} label="Go See" onClick={() => addNode('go_see')} />
+            </ToolSection>
+        </div>
+      </div>
+
+      {/* Main Canvas Area */}
+      <div 
+        className="flex-1 relative overflow-hidden bg-slate-100" 
+        onMouseDown={handleCanvasMouseDown}
+        ref={canvasRef}
+      >
+        {/* Project List Overlay */}
+        {showProjectList && (
+            <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-8 pointer-events-auto" onMouseDown={(e) => e.stopPropagation()}>
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-full flex flex-col overflow-hidden">
+                    <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Folder className="text-blue-600" /> Project Notebook</h2>
+                        <button onClick={() => setShowProjectList(false)}><X size={24} /></button>
+                    </div>
+                    <div className="p-4 overflow-y-auto flex-1 bg-slate-50/50">
+                        <button onClick={handleNewProject} className="w-full bg-white border border-dashed border-slate-300 p-4 rounded-lg mb-4 hover:border-blue-500 hover:bg-blue-50 flex items-center justify-center gap-2"><FilePlus /> Create New Project</button>
+                        <div className="space-y-2">
+                            {projects.map(p => (
+                                <div key={p.id} onClick={() => handleLoadProject(p)} className={`bg-white p-4 rounded-lg border shadow-sm cursor-pointer hover:shadow-md flex justify-between ${currentProjectId === p.id ? 'border-blue-500 ring-1' : ''}`}>
+                                    <div><h3 className="font-semibold">{p.title || 'Untitled'}</h3><p className="text-xs text-slate-400">{p.updatedAt ? new Date(p.updatedAt.seconds * 1000).toLocaleDateString() : 'Just now'}</p></div>
+                                    <button onClick={(e) => handleDeleteProject(e, p.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={16} /></button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Top Bar */}
+        <div className="absolute top-4 left-0 right-0 flex justify-center pointer-events-none z-50">
+             <div className="bg-white/90 backdrop-blur shadow-sm border border-slate-200 rounded-lg flex items-center p-1 pointer-events-auto gap-4">
+                <div className="px-3 py-1 bg-slate-100 rounded text-xs font-semibold text-slate-600">
+                    Mode: <span className="text-blue-600 uppercase">{isSpacePressed ? "Panning" : mode}</span>
+                </div>
+                <div className="w-px h-6 bg-slate-200"></div>
+                <div className="flex items-center group relative px-2">
+                    {isEditingTitle ? (
+                        <input type="text" autoFocus value={projectTitle} onChange={(e) => setProjectTitle(e.target.value)} onBlur={() => setIsEditingTitle(false)} onKeyDown={(e) => e.key === 'Enter' && setIsEditingTitle(false)} className="text-sm font-bold text-center bg-transparent border-b border-blue-500 focus:outline-none w-48"/>
+                    ) : (
+                        <button onClick={() => setIsEditingTitle(true)} className="flex items-center gap-2 text-sm font-bold text-slate-800 hover:text-blue-600 px-2 py-1 rounded hover:bg-slate-50">{projectTitle}<PenLine size={12} className="opacity-0 group-hover:opacity-50" /></button>
+                    )}
+                </div>
+             </div>
+        </div>
+
+        {/* Metrics Box (Top Right) */}
+        <div className="absolute top-20 right-4 bg-white/90 backdrop-blur p-4 rounded-lg shadow-lg border border-slate-300 z-50 pointer-events-auto w-56">
+             <h3 className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-2 border-b border-slate-200 pb-1">
+                 <Calculator size={14}/> VSM Metrics
+             </h3>
+             <div className="space-y-2 text-sm">
+                 <div className="flex justify-between items-center">
+                     <span className="text-slate-600">Production Lead Time:</span>
+                     <span className="font-bold text-blue-700">{metrics.leadTime} days</span>
+                 </div>
+                 <div className="flex justify-between items-center">
+                     <span className="text-slate-600">Processing Time:</span>
+                     <span className="font-bold text-green-700">{metrics.processingTime} sec</span>
+                 </div>
+             </div>
+        </div>
+
+        {/* Connect Hint */}
+        {connectSourceId && <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-xs px-3 py-1 rounded-full shadow-lg z-50 animate-bounce pointer-events-none">Select target...</div>}
+
+        {/* Zoom Controls */}
+        <div className="absolute bottom-4 right-4 flex gap-2 z-50 pointer-events-auto">
+             <div className="bg-white rounded-lg shadow border border-slate-200 flex flex-col">
+                <button onClick={() => setSnapToGrid(!snapToGrid)} className={`p-2 ${snapToGrid ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:bg-slate-100'}`}><Grid size={20}/></button>
+                <div className="h-px bg-slate-200"></div>
+                <button onClick={() => setZoom(z => Math.min(z + 0.1, 3))} className="p-2 hover:bg-slate-100 text-slate-600"><ZoomIn size={20}/></button>
+                <div className="h-px bg-slate-200"></div>
+                <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.2))} className="p-2 hover:bg-slate-100 text-slate-600"><ZoomOut size={20}/></button>
+                <div className="h-px bg-slate-200"></div>
+                <button onClick={() => setZoom(1)} className="p-1 text-xs font-mono text-slate-500 hover:bg-slate-100">{Math.round(zoom * 100)}%</button>
+             </div>
+        </div>
+
+        {/* Canvas */}
+        <div 
+            style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', width: '100%', height: '100%' }}
+            className="relative will-change-transform"
+        >
+            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#64748b 1px, transparent 1px)', backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`, width: '400%', height: '400%', transform: 'translate(-50%, -50%)', left: '50%', top: '50%' }}></div>
+
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#475569" /></marker>
+                    <marker id="arrowhead-selected" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" /></marker>
+                    <marker id="arrowhead-electric" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#475569" /></marker>
+                </defs>
+                {connections.map(conn => {
+                    const start = getNodeCenter(conn.from);
+                    const end = getNodeCenter(conn.to);
+                    const isSelected = conn.id === selectedConnId;
+                    const isElectronic = conn.type === 'electronic';
+
+                    return (
+                        <g key={conn.id} onClick={(e) => { e.stopPropagation(); setSelectedConnId(conn.id); setSelectedId(null); }} className="cursor-pointer pointer-events-auto">
+                            {/* Hit Area */}
+                            {isElectronic ? (
+                                <polyline points={getPolylinePoints(start, end)} fill="none" stroke="transparent" strokeWidth="20" />
+                            ) : (
+                                <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="transparent" strokeWidth="20" />
+                            )}
+                            
+                            {/* Visible Line */}
+                            {isElectronic ? (
+                                <polyline 
+                                    points={getPolylinePoints(start, end)} 
+                                    fill="none" 
+                                    stroke={isSelected ? "#3b82f6" : "#475569"} 
+                                    strokeWidth={isSelected ? "3" : "2"} 
+                                    markerEnd={isSelected ? "url(#arrowhead-selected)" : "url(#arrowhead-electric)"} 
+                                />
+                            ) : (
+                                <line 
+                                    x1={start.x} y1={start.y} x2={end.x} y2={end.y} 
+                                    stroke={isSelected ? "#3b82f6" : "#475569"} 
+                                    strokeWidth={isSelected ? "3" : "2"} 
+                                    markerEnd={isSelected ? "url(#arrowhead-selected)" : "url(#arrowhead)"} 
+                                />
+                            )}
+
+                            {isElectronic && (
+                                <path 
+                                    d={`M ${(start.x+end.x)/2 - 5} ${(start.y+end.y)/2 - 10} L ${(start.x+end.x)/2 + 5} ${(start.y+end.y)/2} L ${(start.x+end.x)/2 - 5} ${(start.y+end.y)/2 + 10}`} 
+                                    fill="none" 
+                                    stroke={isSelected ? "#3b82f6" : "#475569"} 
+                                    strokeWidth="1"
+                                    className="opacity-0" // Just handled by polyline zig zag for now, simple implementation
+                                />
+                            )}
+                        </g>
+                    );
+                })}
+            </svg>
+
+            {nodes.map(node => <Node key={node.id} node={node} isSelected={selectedId === node.id} onMouseDown={handleMouseDown} />)}
+        </div>
+      </div>
+
+      {/* Properties Panel */}
+      <div className={`w-64 bg-white border-l border-slate-200 p-4 shadow-xl z-50 overflow-y-auto transition-transform duration-200 ${selectedNode || selectedConnId ? 'translate-x-0' : 'translate-x-full hidden'}`}>
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-slate-800">{selectedConnId ? 'Connector' : 'Properties'}</h3>
+                <button onClick={() => { setSelectedId(null); setSelectedConnId(null); }}><X size={18} /></button>
+            </div>
+            {selectedConnId && <button onClick={deleteSelected} className="w-full bg-red-50 text-red-600 px-4 py-2 rounded border border-red-200 flex items-center justify-center gap-2"><Trash2 size={16} /> Delete Connection</button>}
+            {selectedNode && (
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Label</label>
+                        <input type="text" value={selectedNode.label} onChange={(e) => updateNodeData('label', e.target.value)} className="w-full border border-slate-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    {/* Process Specific Data */}
+                    {['process'].includes(selectedNode.type) && (
+                        <div className="bg-slate-50 p-3 rounded border border-slate-100 space-y-3">
+                            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Cycle Time (sec)</label><input type="number" value={selectedNode.data.ct} onChange={(e) => updateNodeData('ct', e.target.value)} className="w-full border border-slate-300 rounded px-2 py-1 text-sm" /></div>
+                            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Changeover (min)</label><input type="number" value={selectedNode.data.co} onChange={(e) => updateNodeData('co', e.target.value)} className="w-full border border-slate-300 rounded px-2 py-1 text-sm" /></div>
+                            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Uptime (%)</label><input type="number" value={selectedNode.data.uptime} onChange={(e) => updateNodeData('uptime', e.target.value)} className="w-full border border-slate-300 rounded px-2 py-1 text-sm" /></div>
+                        </div>
+                    )}
+                    {selectedNode.type === 'inventory' && (
+                        <div className="space-y-3">
+                            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Quantity</label><input type="number" value={selectedNode.data.amount} onChange={(e) => updateNodeData('amount', e.target.value)} className="w-full border border-slate-300 rounded px-2 py-1 text-sm" /></div>
+                            <div className="bg-blue-50 p-2 rounded border border-blue-100">
+                                <label className="block text-xs font-bold text-blue-800 mb-1">Lead Time (Days)</label>
+                                <input type="number" value={selectedNode.data.leadTime || 0} onChange={(e) => updateNodeData('leadTime', e.target.value)} className="w-full border border-blue-200 rounded px-2 py-1 text-sm focus:border-blue-500" />
+                                <p className="text-[10px] text-blue-600 mt-1">This value is added to total Production Lead Time.</p>
+                            </div>
+                        </div>
+                    )}
+                    <button onClick={deleteSelected} className="w-full mt-6 bg-red-50 text-red-600 px-4 py-2 rounded border border-red-200 flex items-center justify-center gap-2"><Trash2 size={16} /> Delete Item</button>
+                </div>
+            )}
+      </div>
+    </div>
+  );
+}
+
+const ToolSection = ({ title, children }) => (
+    <div>
+        <div className="text-[10px] font-bold text-slate-400 uppercase mb-1 px-1">{title}</div>
+        <div className="grid grid-cols-3 gap-1">{children}</div>
+    </div>
+);
+
+const ToolBtn = ({ icon: Icon, label, onClick }) => (
+    <button onClick={onClick} className="flex flex-col items-center justify-center p-2 rounded text-slate-600 hover:bg-slate-100 hover:text-blue-600 transition-colors border border-transparent hover:border-slate-200">
+        <Icon size={20} strokeWidth={1.5} />
+        <span className="text-[9px] mt-1 font-medium truncate w-full text-center">{label}</span>
+    </button>
+);
+
+const ToolBtnSmall = ({ icon: Icon, label, onClick, active, color }) => (
+    <button onClick={onClick} className={`flex items-center justify-center p-2 rounded transition-colors ${active ? 'bg-blue-100 text-blue-600' : (color || 'text-slate-500 hover:bg-slate-100')}`} title={label}>
+        <Icon size={18} />
+    </button>
+);
