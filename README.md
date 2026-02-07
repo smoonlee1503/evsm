@@ -5,7 +5,7 @@ React Value Stream Mapping (VSM) Tool
 
 A web-based, drag-and-drop Value Stream Mapping tool built with React. This application allows users to visualize manufacturing processes, material flows, and information flows, while automatically calculating key metrics like Production Lead Time and Processing Time.
 
-Features
+## Features
 
 Drag & Drop Interface: Easily add and move VSM symbols on an infinite canvas.
 
@@ -23,7 +23,7 @@ Automatic Calculations: Real-time calculation of Total Processing Time and Produ
 
 Cloud Persistence: Save, load, and manage multiple projects using Firebase Firestore.
 
-Interactive Canvas:
+## Interactive Canvas:
 
 Zoom In/Out controls.
 
@@ -33,7 +33,7 @@ Snap-to-Grid for precise alignment.
 
 Connection Modes: Support for both Manual (straight) and Electronic (lightning/zigzag) information flow lines.
 
-Technologies Used
+## Technologies Used
 
 Frontend: React.js
 
